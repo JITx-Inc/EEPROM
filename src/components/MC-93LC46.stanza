@@ -1,0 +1,99 @@
+#use-added-syntax(jitx)
+defpackage EEPROM/components/MC-93LC46:
+  import core
+  import jitx
+  import jitx/commands
+
+  import jsl/errors
+  import jsl/bundles
+  import jsl/symbols
+  import jsl/landpatterns
+
+public defstruct MC-InvalidWordSize <: Exception :
+  msg:String with:
+    default => "Invalid Word Size for EEPROM Definition - Expects 8 or 16"
+
+defmethod print (o:OutputStream, e:MC-InvalidWordSize):
+  print(o, msg(e))
+
+defn make-part-number (has-org:True|False, word-size:Int|False, ext-temp:True|False) :
+  val var-type = if has-org: "C"
+  else:
+    match(word-size):
+      (_:False): throw $ MC-InvalidWordSize()
+      (ws:Int):
+        if word-size == 8: "A"
+        else if word-size == 16: "B"
+        else: throw $ MC-InvalidWordSize()
+
+
+  val temp-code = "E" when ext-temp else "I"
+  to-string("93LC46%_T-%_/SN" % [var-type, temp-code])
+
+doc: \<DOC>
+Microchip 93LC46* Component Generator
+
+@param has-org Indicates whether we want a variant with the `ORG` pin
+or not.
+@param word-size If no `ORG` pin present, this selects for 8- or 16-bit word
+size.
+@param ext-temp Flag to indicate whether we wanted extended temperature
+range variant or not.
+<DOC>
+public pcb-component component ( -- has-org:True|False, word-size:Int|False = false, ext-temp:True|False = false) :
+  description = "Microwire EEPROM 1kB"
+  manufacturer = "Microchip"
+  mpn = make-part-number(has-org, word-size, ext-temp)
+  datasheet = "https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/93AA46A-B-C-93LC46A-B-C-93C46A-B-C-1-Kbit-Microwire-Compatible-Serial-EEPROM-Data-Sheet-DS20001749.pdf"
+  reference-prefix = "U"
+
+  if ext-temp :
+    property(self.rated-temperature) = min-max(-40.0, 125.0)
+  else:
+    property(self.rated-temperature) = min-max(-40.0, 85.0)
+
+  pin-properties :
+    [ pin : Ref | pads : Int ... | side:Dir | row:Int]
+    [ CS        | 1           | Left | 0 ]
+    [ CLK       | 2           | Left | 0 ]
+    [ DI        | 3           | Left | 0 ]
+    [ DO        | 4           | Left | 0 ]
+    [ VSS       | 5           | Left | 1 ]
+    [ VCC       | 8           | Right | 0 ]
+    if has-org:
+      [ ORG       | 6           | Right | 1 ]
+    else:
+      [ NC[2]     | 6           | Right | 1 ]
+    [ NC[1]     | 7           | Right | 1 ]
+
+
+  val box = BoxSymbol(self)
+  set-grid(box, [2, 2])
+  set-alignment(N, self.VCC)
+  assign-symbol $ create-symbol(box)
+
+  val pkg = SOIC-N(
+    num-leads = 8,
+    lead-span = min-max(5.8, 6.2),
+    package-length = 4.9 +/- 0.10,
+  )
+  assign-landpattern $ create-landpattern(pkg)
+
+  property(self.VCC.rated-voltage) = min-max(2.5, 5.5)
+
+public pcb-module dev-93LC46C-I :
+
+  port rail-VCC : power
+
+  public inst C : component(has-org = true)
+
+  net (rail-VCC.V+, C.VCC)
+  net (rail-VCC.V-, C.VSS)
+
+  for nc-p in ports(C.NC) do:
+    no-connect(nc-p)
+
+
+
+
+
